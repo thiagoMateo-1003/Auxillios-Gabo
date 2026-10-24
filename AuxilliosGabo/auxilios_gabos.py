@@ -36,21 +36,10 @@ ARCHIVO_PENDIENTES = CARPETA / "pendientes_cotizador_nuevo.json"
 ARCHIVO_COMPLETADAS = CARPETA / "completadas_cotizador_nuevo.json"
 ARCHIVO_FALLIDAS = CARPETA / "fallidas_cotizador_nuevo.json"
 CARPETA_TOKENS = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "AuxiliosGabo"
-TOKEN_GPS_FILE = CARPETA_TOKENS / "token_gps.txt"
 TOKEN_TELEGRAM_FILE = CARPETA_TOKENS / "token_telegram.txt"
 
 # Estado global de ejecucion para el control del Bot
 MONITOREO_ACTIVO = True
-
-
-def leer_token_gps():
-    if "TOKEN_GPS" in os.environ and os.environ["TOKEN_GPS"].strip():
-        return os.environ["TOKEN_GPS"].strip()
-    if TOKEN_GPS_FILE.exists():
-        valor = TOKEN_GPS_FILE.read_text(encoding="utf-8-sig").strip()
-        if valor:
-            return valor
-    raise ValueError("Token GPS no configurado en entorno ni en archivo local")
 
 
 def leer_token_telegram():
@@ -157,8 +146,7 @@ def metros_recta(a, b):
 def posicion_camion_sync():
     respuesta = requests.get(
         URL_GPS,
-        headers={"Authorization": "Bearer " + leer_token_gps(),
-                 "Accept": "application/json"},
+        headers={"Accept": "application/json"},
         timeout=15,
     )
     respuesta.raise_for_status()
@@ -523,7 +511,6 @@ async def monitor_claims(pagina, cola, conocidos, pendientes, completadas):
 
 async def principal():
     leer_token_telegram()
-    leer_token_gps()
     conocidos = cargar_ids(ARCHIVO_IDS)
     pendientes = cargar_ids(ARCHIVO_PENDIENTES)
     completadas = cargar_ids(ARCHIVO_COMPLETADAS)
@@ -579,7 +566,6 @@ async def prueba_manual(identificador):
     print("No se enviara ninguna oferta a Claims.")
     print("=" * 54)
 
-    leer_token_gps()
     leer_token_telegram()
 
     async with async_playwright() as pw:
