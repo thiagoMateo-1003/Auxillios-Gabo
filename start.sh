@@ -1,0 +1,2 @@
+playwright install chromium
+python auxilios_gabos.py
