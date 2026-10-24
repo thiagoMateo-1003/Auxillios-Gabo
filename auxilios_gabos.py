@@ -4,6 +4,9 @@ Basado en monitor24siete.py. Requiere playwright y requests.
 No envia ofertas ni acepta asistencias en Claims.
 Incluye integracion con Bot de Telegram para comandos de control (/prender, /apagar, /estado).
 """
+import http.server
+import threading
+import socket
 import argparse
 import asyncio
 import json
@@ -51,6 +54,18 @@ def leer_token_telegram():
             return valor
     raise ValueError("Token Telegram no configurado en entorno ni en archivo local")
 
+def iniciar_servidor_web():
+    """Inicia un servidor HTTP básico para cumplir con el requisito de puertos de Render."""
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Auxilios GABO Bot is running!")
+
+    port = int(os.environ.get("PORT", 10000))
+    server = http.server.HTTPServer(("0.0.0.0", port), Handler)
+    print(f"Servidor web fantasma escuchando en el puerto {port}")
+    server.serve_forever()
 
 def cargar_ids(ruta):
     if not ruta.exists():
@@ -510,6 +525,8 @@ async def monitor_claims(pagina, cola, conocidos, pendientes, completadas):
 
 
 async def principal():
+    hilo_web = threading.Thread(target=iniciar_servidor_web, daemon=True)
+    hilo_web.start()
     leer_token_telegram()
     conocidos = cargar_ids(ARCHIVO_IDS)
     pendientes = cargar_ids(ARCHIVO_PENDIENTES)
