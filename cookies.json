@@ -2,7 +2,7 @@
   {
     "name": "refreshToken",
     "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.NhMy0xMlLTQxNjTYi0xyTdIZdczyWYxMmMiLCJpXQIoJe3OTMzNzI1MjesImFjY2V2RjRva2VjMDhCMKRGMjZDM0ZDNTMZOERBQUU5MUUxQjcyOUvFOUNGmzgyQ0U0RjDMzQzMDU0M0I0RUNFNzQ5MkQwQjQ2NylsInN1YjZlJiRiZU2MWQxLTM1YjltNDlhNjMxLW1XNWQ4Y2VhnMzKmylsInVzZXJJJzI6IjlzInN1YjZlJiRiZU2MWQxLTM1YjltNDlhNjMxLW1XNWQ4Y2VhnMzKmylsInVzZXJJJzI6IjlzIm5iZi0zMjUyMzMjUsMiUyMSwzWhlZXhWhljoxNzkzMzkzMzlxLCJpcC3MiOiJjIjbPbXNnZXJjZ22AWN1ncnVhCylm1ZIC6lMnSYwItc3NlcZPyVzLWdydWZFzln0.GpkbFe1ZkseSe9VKCNF6ZhUDOV5X8mX3gyYrPbSI56Y",
-    "domain": ".claimservices.com.ar",
+    "domain": "24siete.claimservices.com.ar",
     "path": "/",
     "secure": true,
     "httpOnly": true,
