@@ -13,6 +13,8 @@ import json
 import math
 import os
 import time
+import json
+from pathlib import Path
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -540,7 +542,23 @@ async def principal():
         pendientes.clear()
         guardar_ids(ARCHIVO_PENDIENTES, pendientes)
         print(f"Archivadas {cantidad} cotizaciones pendientes antiguas; sin reintentos automaticos.")
+    async with async_playwright() as p:
+        # 1. Lanzamos el navegador
+        navegador = await p.chromium.launch(headless=True)
+        
+        # 2. Creamos el contexto
+        contexto = await navegador.new_context()
 
+        # 3. AQUÍ ES DONDE DEBES PONER EL CÓDIGO DE LAS COOKIES:
+        archivo_cookies = Path("cookies.json")
+        if archivo_cookies.exists():
+            cookies = json.loads(archivo_cookies.read_text(encoding="utf-8"))
+            await contexto.add_cookies(cookies)
+            print("¡Cookies de sesión inyectadas correctamente!")
+
+        # 4. Creamos la página y entramos (ahora ya entrará con tu sesión iniciada)
+        pagina = await contexto.new_page()
+        await pagina.goto("https://www.claimservices.com.ar/login.php")
     # Iniciar escuchador de comandos de Telegram en segundo plano
     asyncio.create_task(procesar_comandos_telegram())
 
