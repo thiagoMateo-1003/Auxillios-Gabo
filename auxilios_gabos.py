@@ -182,6 +182,9 @@ async def iniciar_sesion_automatico(pagina):
             else:
                 await input_pass.press("Enter")
                 
+            # 🕒 Damos tiempo a que procese el login y redirija al panel principal
+            print("Login enviado, esperando redirección al panel...")
+            await pagina.wait_for_timeout(6000) 
             await pagina.wait_for_load_state("domcontentloaded", timeout=15000)
             print("¡Login automático completado con éxito!")
     except Exception as e:
