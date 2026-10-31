@@ -37,21 +37,16 @@ ARCHIVO_IDS = CARPETA / "ids_cotizador_nuevo.json"
 ARCHIVO_PENDIENTES = CARPETA / "pendientes_cotizador_nuevo.json"
 ARCHIVO_COMPLETADAS = CARPETA / "completadas_cotizador_nuevo.json"
 ARCHIVO_FALLIDAS = CARPETA / "fallidas_cotizador_nuevo.json"
-CARPETA_TOKENS = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "AuxiliosGabo"
-TOKEN_TELEGRAM_FILE = CARPETA_TOKENS / "token_telegram.txt"
 
 # Estado global de ejecucion para el control del Bot
 MONITOREO_ACTIVO = True
 
 
 def leer_token_telegram():
-    if "TOKEN_TELEGRAM" in os.environ and os.environ["TOKEN_TELEGRAM"].strip():
-        return os.environ["TOKEN_TELEGRAM"].strip()
-    if TOKEN_TELEGRAM_FILE.exists():
-        valor = TOKEN_TELEGRAM_FILE.read_text(encoding="utf-8-sig").strip()
-        if valor:
-            return valor
-    raise ValueError("Token Telegram no configurado en entorno ni en archivo local")
+    token = os.environ.get("TOKEN_TELEGRAM", "").strip()
+    if not token:
+        raise ValueError("Token Telegram no configurado en entorno")
+    return token
 
 
 def iniciar_servidor_web():
@@ -160,6 +155,40 @@ def metros_recta(a, b):
          + math.cos(lat1)*math.cos(lat2)*math.sin((lon2-lon1)/2)**2)
     return 2 * 6371000 * math.asin(math.sqrt(min(1, h)))
 
+async def iniciar_sesion_automatico(pagina):
+    """Realiza el login automático en Claims usando credenciales de entorno."""
+    print("Verificando estado de sesión en Claims...")
+    await pagina.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
+    
+    try:
+        input_usuario = pagina.locator("input[placeholder='Usuario']")
+        input_pass = pagina.locator("input[placeholder='Contraseña']")
+        
+        if await input_usuario.is_visible(timeout=5000):
+            print("Sesión expirada o no iniciada. Procediendo a login automático...")
+            
+            usuario = os.environ.get("CLAIMS_USER", "").strip()
+            password = os.environ.get("CLAIMS_PASS", "").strip()
+            
+            if not usuario or not password:
+                raise ValueError("Faltan configurar CLAIMS_USER o CLAIMS_PASS en las variables de entorno de Render.")
+            
+            await input_usuario.fill(usuario)
+            await input_pass.fill(password)
+            
+            boton_ingresar = pagina.locator("button[type='submit'], button:has-text('Iniciar'), button:has-text('Ingresar')").first
+            if await boton_ingresar.count() > 0:
+                await boton_ingresar.click()
+            else:
+                await input_pass.press("Enter")
+                
+            await pagina.wait_for_load_state("domcontentloaded", timeout=15000)
+            print("¡Login automático completado con éxito!")
+    except Exception as e:
+        print(f"Nota durante la verificación de login: {e}")
+
+    if not await seleccionar_todas(pagina):
+        raise ValueError("No se pudo acceder a la pestaña TODAS tras el intento de inicio de sesión.")
 
 def posicion_camion_sync():
     respuesta = requests.get(
@@ -510,19 +539,11 @@ async def principal():
                 navegador = await pw.chromium.launch(headless=True)
                 contexto = await navegador.new_context(permissions=["clipboard-read", "clipboard-write"])
 
-                archivo_cookies = Path("cookies.json")
-                if archivo_cookies.exists():
-                    cookies = json.loads(archivo_cookies.read_text(encoding="utf-8"))
-                    await contexto.add_cookies(cookies)
-                    print("¡Cookies de sesión inyectadas correctamente!")
-
+                # YA NO USAMOS cookies.json, usamos login automático:
                 pagina_monitor = await contexto.new_page()
                 pagina_cotizador = await contexto.new_page()
                 
-                await pagina_monitor.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
-                
-                if not await seleccionar_todas(pagina_monitor):
-                    raise ValueError("No se encontro TODAS. Posible sesion expirada en cookies.json.")
+                await iniciar_sesion_automatico(pagina_monitor)
                 
                 datos = await leer_filas(pagina_monitor)
                 if not datos:
@@ -542,8 +563,7 @@ async def principal():
         except Exception as error:
             print(f"ERROR CRITICO DE SESION/NAVEGACION: {type(error).__name__}: {error}")
             await telegram(f"⚠️ AUXILIOS GABO: Error de sesión o acceso a Claims ({type(error).__name__}). Reintentando en 60 segundos...")
-            await asyncio.sleep(60) # Espera un minuto antes de reintentar para no saturar Render
-
+            await asyncio.sleep(180)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monitor Claims y cotizador de Auxilios GABO")
