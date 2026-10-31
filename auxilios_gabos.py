@@ -501,43 +501,48 @@ async def principal():
     # Iniciar escuchador de comandos de Telegram en segundo plano
     asyncio.create_task(procesar_comandos_telegram())
 
-    # Darle un respiro de 3 segundos para asegurar que Render detecte el puerto web activo
     print("Esperando inicio del servidor web antes de lanzar Playwright...")
     await asyncio.sleep(3)
 
-    async with async_playwright() as pw:
-        navegador = await pw.chromium.launch(headless=True)
-        contexto = await navegador.new_context(permissions=["clipboard-read", "clipboard-write"])
-
-        archivo_cookies = Path("cookies.json")
-        if archivo_cookies.exists():
-            cookies = json.loads(archivo_cookies.read_text(encoding="utf-8"))
-            await contexto.add_cookies(cookies)
-            print("¡Cookies de sesión inyectadas correctamente!")
-
-        pagina_monitor = await contexto.new_page()
-        pagina_cotizador = await contexto.new_page()
+    while True:
         try:
-            await pagina_monitor.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
-            if not await seleccionar_todas(pagina_monitor):
-                raise ValueError("No se encontro TODAS. Es necesario estar en ASISTENCIAS.")
-            datos = await leer_filas(pagina_monitor)
-            if not datos:
-                print("Aviso: Tabla inicial vacia o sin asistencias visibles en este momento.")
-            if not ARCHIVO_IDS.exists() and datos:
-                conocidos.update(id_ for id_, _ in datos)
-                guardar_ids(ARCHIVO_IDS, conocidos)
-            
-            cola = asyncio.Queue()
-            print("MONITOR + COTIZADOR ACTIVADO. Tarifa: $2.000/km")
-            await telegram("Auxilios GABO: monitor y cotizador activados en la nube. Usa /apagar o /prender para gestionar el servicio.")
-            
-            await asyncio.gather(
-                monitor_claims(pagina_monitor, cola, conocidos, pendientes, completadas),
-                trabajador_cotizaciones(pagina_cotizador, cola, pendientes, completadas, fallidas),
-            )
-        finally:
-            await navegador.close()
+            async with async_playwright() as pw:
+                navegador = await pw.chromium.launch(headless=True)
+                contexto = await navegador.new_context(permissions=["clipboard-read", "clipboard-write"])
+
+                archivo_cookies = Path("cookies.json")
+                if archivo_cookies.exists():
+                    cookies = json.loads(archivo_cookies.read_text(encoding="utf-8"))
+                    await contexto.add_cookies(cookies)
+                    print("¡Cookies de sesión inyectadas correctamente!")
+
+                pagina_monitor = await contexto.new_page()
+                pagina_cotizador = await contexto.new_page()
+                
+                await pagina_monitor.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
+                
+                if not await seleccionar_todas(pagina_monitor):
+                    raise ValueError("No se encontro TODAS. Posible sesion expirada en cookies.json.")
+                
+                datos = await leer_filas(pagina_monitor)
+                if not datos:
+                    print("Aviso: Tabla inicial vacia o sin asistencias visibles.")
+                if not ARCHIVO_IDS.exists() and datos:
+                    conocidos.update(id_ for id_, _ in datos)
+                    guardar_ids(ARCHIVO_IDS, conocidos)
+                
+                cola = asyncio.Queue()
+                print("MONITOR + COTIZADOR ACTIVADO. Tarifa: $2.000/km")
+                await telegram("Auxilios GABO: monitor y cotizador activados en la nube. Usa /apagar o /prender para gestionar el servicio.")
+                
+                await asyncio.gather(
+                    monitor_claims(pagina_monitor, cola, conocidos, pendientes, completadas),
+                    trabajador_cotizaciones(pagina_cotizador, cola, pendientes, completadas, fallidas),
+                )
+        except Exception as error:
+            print(f"ERROR CRITICO DE SESION/NAVEGACION: {type(error).__name__}: {error}")
+            await telegram(f"⚠️ AUXILIOS GABO: Error de sesión o acceso a Claims ({type(error).__name__}). Reintentando en 60 segundos...")
+            await asyncio.sleep(60) # Espera un minuto antes de reintentar para no saturar Render
 
 
 if __name__ == "__main__":
