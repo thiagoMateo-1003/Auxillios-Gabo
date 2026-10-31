@@ -565,7 +565,7 @@ async def principal():
                 )
         except Exception as error:
             print(f"ERROR CRITICO DE SESION/NAVEGACION: {type(error).__name__}: {error}")
-            await telegram(f"⚠️ AUXILIOS GABO: Error de sesión o acceso a Claims ({type(error).__name__}). Reintentando en 60 segundos...")
+            await telegram(f"⚠️ AUXILIOS GABO: Error de sesión o acceso a Claims ({type(error).__name__}). Reintentando en 3 minutos...")
             await asyncio.sleep(180)
 
 if __name__ == "__main__":
