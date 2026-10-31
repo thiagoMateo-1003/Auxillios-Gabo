@@ -156,16 +156,19 @@ def metros_recta(a, b):
     return 2 * 6371000 * math.asin(math.sqrt(min(1, h)))
 
 async def iniciar_sesion_automatico(pagina):
-    """Realiza el login automático en Claims usando credenciales de entorno."""
+    """Realiza el login automático en Claims buscando los campos de entrada por múltiples métodos."""
     print("Verificando estado de sesión en Claims...")
     await pagina.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
+    await pagina.wait_for_timeout(3000)
     
     try:
-        input_usuario = pagina.locator("input[placeholder='Usuario']")
-        input_pass = pagina.locator("input[placeholder='Contraseña']")
+        # Intentamos localizar los campos de usuario y contraseña de forma flexible
+        input_usuario = pagina.locator("input[type='text'], input[type='email'], input").first
+        input_pass = pagina.locator("input[type='password']").first
         
-        if await input_usuario.is_visible(timeout=5000):
-            print("Sesión expirada o no iniciada. Procediendo a login automático...")
+        # Verificamos si realmente estamos en la pantalla de login comprobando si existe el campo de contraseña
+        if await input_pass.is_visible(timeout=5000):
+            print("Pantalla de login detectada. Introduciendo credenciales...")
             
             usuario = os.environ.get("CLAIMS_USER", "").strip()
             password = os.environ.get("CLAIMS_PASS", "").strip()
@@ -173,22 +176,26 @@ async def iniciar_sesion_automatico(pagina):
             if not usuario or not password:
                 raise ValueError("Faltan configurar CLAIMS_USER o CLAIMS_PASS en las variables de entorno de Render.")
             
+            # Llenar datos
             await input_usuario.fill(usuario)
             await input_pass.fill(password)
             
-            boton_ingresar = pagina.locator("button[type='submit'], button:has-text('Iniciar'), button:has-text('Ingresar')").first
+            # Hacer clic en el botón de ingresar
+            boton_ingresar = pagina.locator("button[type='submit'], button, input[type='submit']").last
             if await boton_ingresar.count() > 0:
                 await boton_ingresar.click()
             else:
                 await input_pass.press("Enter")
                 
-            # 🕒 Damos tiempo a que procese el login y redirija al panel principal
             print("Login enviado, esperando redirección al panel...")
-            await pagina.wait_for_timeout(6000) 
+            await pagina.wait_for_timeout(6000)
             await pagina.wait_for_load_state("domcontentloaded", timeout=15000)
             print("¡Login automático completado con éxito!")
+        else:
+            print("Sesión ya activa o campos de login no visibles. Continuando...")
+            
     except Exception as e:
-        print(f"Nota durante la verificación de login: {e}")
+        print(f"Aviso durante el proceso de login: {e}")
 
     if not await seleccionar_todas(pagina):
         raise ValueError("No se pudo acceder a la pestaña TODAS tras el intento de inicio de sesión.")
