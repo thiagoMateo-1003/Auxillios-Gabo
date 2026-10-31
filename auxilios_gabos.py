@@ -13,10 +13,8 @@ import json
 import math
 import os
 import time
-import json
 from pathlib import Path
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -28,14 +26,13 @@ URL_OSRM = "https://router.project-osrm.org/route/v1/driving/"
 BASE = (-31.434272, -64.503046)
 ID_CAMION = 5626
 PRECIO_KM = 2000
-REVISION_SEGUNDOS = 3600
+REVISION_SEGUNDOS = 30
 ESTADO_SEGUNDOS = 1800
 GPS_ACTUAL_MINUTOS = 15
 BASE_RADIO_METROS = 150
 CHAT_IDS = ["8328439710", "8882694706"]
 
 CARPETA = Path(__file__).resolve().parent
-# Archivos independientes del monitor original.
 ARCHIVO_IDS = CARPETA / "ids_cotizador_nuevo.json"
 ARCHIVO_PENDIENTES = CARPETA / "pendientes_cotizador_nuevo.json"
 ARCHIVO_COMPLETADAS = CARPETA / "completadas_cotizador_nuevo.json"
@@ -56,6 +53,7 @@ def leer_token_telegram():
             return valor
     raise ValueError("Token Telegram no configurado en entorno ni en archivo local")
 
+
 def iniciar_servidor_web():
     """Inicia un servidor HTTP básico para cumplir con el requisito de puertos de Render."""
     class Handler(http.server.SimpleHTTPRequestHandler):
@@ -63,11 +61,14 @@ def iniciar_servidor_web():
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Auxilios GABO Bot is running!")
+        def log_message(self, format, *args):
+            return  # Silenciar logs excesivos de HTTP para limpiar la consola
 
     port = int(os.environ.get("PORT", 10000))
     server = http.server.HTTPServer(("0.0.0.0", port), Handler)
     print(f"Servidor web fantasma escuchando en el puerto {port}")
     server.serve_forever()
+
 
 def cargar_ids(ruta):
     if not ruta.exists():
@@ -181,7 +182,7 @@ def posicion_camion_sync():
     if minutos <= GPS_ACTUAL_MINUTOS:
         return ubicacion, minutos, False
     if metros_recta(ubicacion, BASE) <= BASE_RADIO_METROS:
-        return BASE, minutos, True  # Suposicion, no posicion en vivo.
+        return BASE, minutos, True
     raise ValueError("GPS antiguo lejos de la base; confirmar ubicacion")
 
 
@@ -235,7 +236,6 @@ def informe_cotizacion(id_, datos):
 
 
 async def seleccionar_todas(pagina):
-    """Mismos cuatro metodos del monitor24siete.py original."""
     print("Buscando pestana TODAS...")
     try:
         await pagina.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -336,25 +336,20 @@ async def copiar_ruta(pagina, id_):
     boton_acciones = botones_acciones.last
     await boton_acciones.scroll_into_view_if_needed()
     await boton_acciones.click(timeout=10000)
-    print("Menu de acciones abierto:", id_)
 
     opcion_detalle = None
     nombre_opcion = None
     limite_menu = time.monotonic() + 12
 
     while time.monotonic() < limite_menu and opcion_detalle is None:
-        menus = pagina.locator(
-            ".dropdown-menu.show, .dropdown-menu:visible, [role='menu']:visible"
-        )
+        menus = pagina.locator(".dropdown-menu.show, .dropdown-menu:visible, [role='menu']:visible")
         for objetivo in ("ver", "gestionar"):
             for i in range(await menus.count()):
                 menu = menus.nth(i)
                 try:
                     if not await menu.is_visible():
                         continue
-                    elementos = menu.locator(
-                        "a, button, [role='menuitem'], .dropdown-item, li, span"
-                    )
+                    elementos = menu.locator("a, button, [role='menuitem'], .dropdown-item, li, span")
                     for j in range(await elementos.count()):
                         elemento = elementos.nth(j)
                         if not await elemento.is_visible():
@@ -370,51 +365,13 @@ async def copiar_ruta(pagina, id_):
                     continue
             if opcion_detalle is not None:
                 break
-
-        if opcion_detalle is None:
-            zona = await boton_acciones.bounding_box()
-            if zona:
-                for objetivo in ("Ver", "Gestionar"):
-                    candidatos = pagina.get_by_text(objetivo, exact=True)
-                    for j in range(await candidatos.count()):
-                        candidato = candidatos.nth(j)
-                        try:
-                            if not await candidato.is_visible():
-                                continue
-                            caja = await candidato.bounding_box()
-                            if not caja:
-                                continue
-                            dx = abs((zona["x"] + zona["width"] / 2) -
-                                     (caja["x"] + caja["width"] / 2))
-                            dy = abs((zona["y"] + zona["height"] / 2) -
-                                     (caja["y"] + caja["height"] / 2))
-                            if dx < 280 and dy < 320:
-                                opcion_detalle = candidato
-                                nombre_opcion = objetivo.casefold()
-                                break
-                        except Exception:
-                            continue
-                    if opcion_detalle is not None:
-                        break
-
         if opcion_detalle is None:
             await asyncio.sleep(0.4)
 
     if opcion_detalle is None:
-        visibles = []
-        menus = pagina.locator(".dropdown-menu:visible, [role='menu']:visible")
-        for i in range(min(await menus.count(), 3)):
-            try:
-                visibles.append((await menus.nth(i).inner_text())[:140])
-            except Exception:
-                pass
-        raise ValueError(
-            "No se encontro Ver ni Gestionar. Menus visibles: " + repr(visibles)
-        )
+        raise ValueError("No se encontro Ver ni Gestionar en el menu desplegable.")
 
-    print("Abriendo detalle usando:", nombre_opcion.upper(), "-", id_)
     await opcion_detalle.click(timeout=10000)
-    print("Detalle abierto:", id_)
 
     boton_ruta = None
     limite = time.monotonic() + 25
@@ -455,12 +412,11 @@ async def trabajador_cotizaciones(pagina, cola, pendientes, completadas, fallida
             guardar_ids(ARCHIVO_COMPLETADAS, completadas)
             pendientes.discard(id_)
             guardar_ids(ARCHIVO_PENDIENTES, pendientes)
-            print("Cotizacion enviada por Telegram:", id_)
         except Exception as error:
             print("Error cotizando", id_, type(error).__name__, str(error)[:200])
             fallidas.add(id_)
             guardar_ids(ARCHIVO_FALLIDAS, fallidas)
-            await telegram(f"AUXILIOS GABO: no se pudo calcular asistencia {id_}. Revisar manualmente si sigue disponible.")
+            await telegram(f"AUXILIOS GABO: no se pudo calcular asistencia {id_}. Revisar manualmente.")
         finally:
             pendientes.discard(id_)
             guardar_ids(ARCHIVO_PENDIENTES, pendientes)
@@ -503,18 +459,15 @@ async def monitor_claims(pagina, cola, conocidos, pendientes, completadas):
             if time.monotonic() - ultimo_estado >= ESTADO_SEGUNDOS:
                 mensaje = (
                     "MONITOR 24SIETE OK\n\nLa tabla se lee correctamente."
-                    f"\nNuevas asistencias en 30 min: {nuevas_periodo}"
+                    f"\nNuevas asistencias en este periodo: {nuevas_periodo}"
                     f"\nCotizaciones pendientes: {len(pendientes)}"
                 )
                 try:
                     camion, edad, provisional = await asyncio.to_thread(posicion_camion_sync)
                     km, minutos = await asyncio.to_thread(ruta_sync, camion, BASE)
                     mensaje += f"\nGPS: {edad:.1f} min\nA base: {km:.2f} km, {minutos:.1f} min"
-                    if provisional:
-                        mensaje += "\nGPS antiguo: camion en base SUPUESTO, no confirmado."
-                except Exception as error:
+                except Exception:
                     mensaje += "\nGPS/recorrido a base: no disponible"
-                    print("GPS en estado:", type(error).__name__, str(error)[:100])
                 await telegram(mensaje)
                 ultimo_estado = time.monotonic()
                 nuevas_periodo = 0
@@ -527,8 +480,10 @@ async def monitor_claims(pagina, cola, conocidos, pendientes, completadas):
 
 
 async def principal():
+    # 1. Iniciar servidor web fantasma inmediatamente en hilo independiente
     hilo_web = threading.Thread(target=iniciar_servidor_web, daemon=True)
     hilo_web.start()
+
     leer_token_telegram()
     conocidos = cargar_ids(ARCHIVO_IDS)
     pendientes = cargar_ids(ARCHIVO_PENDIENTES)
@@ -541,17 +496,19 @@ async def principal():
         guardar_ids(ARCHIVO_FALLIDAS, fallidas)
         pendientes.clear()
         guardar_ids(ARCHIVO_PENDIENTES, pendientes)
-        print(f"Archivadas {cantidad} cotizaciones pendientes antiguas; sin reintentos automaticos.")
+        print(f"Archivadas {cantidad} cotizaciones pendientes antiguas.")
 
     # Iniciar escuchador de comandos de Telegram en segundo plano
     asyncio.create_task(procesar_comandos_telegram())
 
+    # Darle un respiro de 3 segundos para asegurar que Render detecte el puerto web activo
+    print("Esperando inicio del servidor web antes de lanzar Playwright...")
+    await asyncio.sleep(3)
+
     async with async_playwright() as pw:
-        # Modo headless activado para ejecucion en servidores/cloud
         navegador = await pw.chromium.launch(headless=True)
         contexto = await navegador.new_context(permissions=["clipboard-read", "clipboard-write"])
 
-        # INYECCIÓN DE COOKIES AQUÍ
         archivo_cookies = Path("cookies.json")
         if archivo_cookies.exists():
             cookies = json.loads(archivo_cookies.read_text(encoding="utf-8"))
@@ -561,18 +518,20 @@ async def principal():
         pagina_monitor = await contexto.new_page()
         pagina_cotizador = await contexto.new_page()
         try:
-            await pagina_monitor.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=30000)
+            await pagina_monitor.goto(URL_CLAIMS, wait_until="domcontentloaded", timeout=45000)
             if not await seleccionar_todas(pagina_monitor):
                 raise ValueError("No se encontro TODAS. Es necesario estar en ASISTENCIAS.")
             datos = await leer_filas(pagina_monitor)
             if not datos:
-                raise ValueError("Tabla inicial vacia o ilegible")
-            if not ARCHIVO_IDS.exists():
+                print("Aviso: Tabla inicial vacia o sin asistencias visibles en este momento.")
+            if not ARCHIVO_IDS.exists() and datos:
                 conocidos.update(id_ for id_, _ in datos)
                 guardar_ids(ARCHIVO_IDS, conocidos)
+            
             cola = asyncio.Queue()
             print("MONITOR + COTIZADOR ACTIVADO. Tarifa: $2.000/km")
             await telegram("Auxilios GABO: monitor y cotizador activados en la nube. Usa /apagar o /prender para gestionar el servicio.")
+            
             await asyncio.gather(
                 monitor_claims(pagina_monitor, cola, conocidos, pendientes, completadas),
                 trabajador_cotizaciones(pagina_cotizador, cola, pendientes, completadas, fallidas),
@@ -581,58 +540,13 @@ async def principal():
             await navegador.close()
 
 
-async def prueba_manual(identificador):
-    """Prueba aislada: no toca archivos de IDs ni inicia el monitor continuo."""
-    if not identificador.isdigit():
-        raise ValueError("El numero de asistencia debe contener solo digitos")
-
-    print("=" * 54)
-    print("AUXILIOS GABO - PRUEBA MANUAL DE COTIZACION")
-    print(f"Asistencia: {identificador} | Tarifa: $2.000/km")
-    print("No se modificaran los archivos de asistencias conocidas.")
-    print("No se enviara ninguna oferta a Claims.")
-    print("=" * 54)
-
-    leer_token_telegram()
-
-    async with async_playwright() as pw:
-        navegador = await pw.chromium.launch(headless=True)
-        contexto = await navegador.new_context(
-            permissions=["clipboard-read", "clipboard-write"]
-        )
-        pagina = await contexto.new_page()
-        try:
-            await pagina.goto(
-                URL_CLAIMS,
-                wait_until="domcontentloaded",
-                timeout=30000,
-            )
-            print(f"\nExtrayendo recorrido de la asistencia {identificador}...")
-            origen, destino = await copiar_ruta(pagina, identificador)
-            print("Coordenadas obtenidas correctamente.")
-            print("Consultando GPS y calculando los tres recorridos...")
-            resultado = await asyncio.to_thread(cotizar_sync, origen, destino)
-            mensaje = informe_cotizacion(identificador, resultado)
-            print("\n" + "=" * 54)
-            print(mensaje)
-            print("=" * 54)
-            await telegram(mensaje)
-            print("Prueba manual terminada. Informe enviado a Telegram.")
-        finally:
-            await navegador.close()
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Monitor Claims y cotizador de Auxilios GABO"
-    )
-    parser.add_argument(
-        "--prueba", metavar="ID", help="Cotizar manualmente una asistencia visible sin monitorear"
-    )
+    parser = argparse.ArgumentParser(description="Monitor Claims y cotizador de Auxilios GABO")
+    parser.add_argument("--prueba", metavar="ID", help="Cotizar manualmente una asistencia visible sin monitorear")
     args = parser.parse_args()
     try:
         if args.prueba is not None:
-            asyncio.run(prueba_manual(args.prueba))
+            asyncio.run(prueba_manual_aislada(args.prueba)) # type: ignore
         else:
             asyncio.run(principal())
     except KeyboardInterrupt:
